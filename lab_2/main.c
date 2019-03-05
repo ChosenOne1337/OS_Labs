@@ -20,7 +20,7 @@ int main(void) {
     set_timezone("America/Los_Angeles");
     // get local time in California
     char timeFmt[TIMEFORMAT_STR_LEN] = {0};
-    get_formatted_localtime(timeFmt, TIMEFORMAT_STR_LEN, currTime);
+    get_formatted_localtime(timeFmt, sizeof(timeFmt), currTime);
     printf("California time: %s\n", timeFmt);
 
     return EXIT_SUCCESS;
@@ -33,7 +33,7 @@ void set_timezone(char *timezone) {
     static char buf[STRING_BUF_LEN] = {0};
     static const char errorMsg[] = "Failed to set a timezone";
     // build TZ environment variable definition
-    int charsWritten = snprintf(buf, STRING_BUF_LEN, "TZ=%s", timezone);
+    long charsWritten = snprintf(buf, sizeof(buf), "TZ=%s", timezone);
     if (charsWritten >= STRING_BUF_LEN) {
         fprintf(stderr, "%s: buffer overflow\n", errorMsg);
         return;
