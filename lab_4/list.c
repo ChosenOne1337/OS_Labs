@@ -62,12 +62,12 @@ void list_destroy(List *list) {
 
 int list_append(List *list, char *str) {
     if (list == NULL) {
-        return -1;
+        return FAILURE_CODE;
     }
 
     ListNode *node = list_node_create(str);
     if (node == NULL) {
-        return -1;
+        return FAILURE_CODE;
     }
 
     if (list->length == 0) {
@@ -78,17 +78,17 @@ int list_append(List *list, char *str) {
     }
     list->length++;
 
-    return 0;
+    return SUCCESS_CODE;
 }
 
 int list_prepend(List *list, char *str) {
     if (list == NULL) {
-        return -1;
+        return FAILURE_CODE;
     }
 
     ListNode *node = list_node_create(str);
     if (node == NULL) {
-        return -1;
+        return FAILURE_CODE;
     }
 
     if (list->length == 0) {
@@ -99,5 +99,5 @@ int list_prepend(List *list, char *str) {
     }
     list->length++;
 
-    return 0;
+    return SUCCESS_CODE;
 }

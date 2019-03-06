@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "list.h"
+#include "constants.h"
 
 void fill_list(List *list, FILE *inFile);
 void print_list(List *list, FILE *outFile);
@@ -43,19 +44,23 @@ void fill_list(List *list, FILE *inFile) {
 }
 
 int expand_buffer(char **buf, int *bufSize) {
-    char *newBuf = (char*)realloc(*buf, (size_t) (*bufSize) * 2);
+    static const int sizeMultiplier = 2;
+    int newBufSize = (*bufSize) * sizeMultiplier;
+    char *newBuf = (char*)realloc(*buf, (size_t)newBufSize);
     if (newBuf == NULL) {
         perror("expand_buffer(..) error");
-        return 1;
+        return FAILURE_CODE;
     }
     *buf = newBuf;
-    *bufSize *= 2;
+    *bufSize = newBufSize;
 
-    return 0;
+    return SUCCESS_CODE;
 }
 
 void read_file(FILE *inFile, List *lineList, char **lineBuf, int bufSize) {
     static const char END_COMMAND[] = ".";
+    static const char NEW_LINE_CHAR = '\n';
+    static const char STRING_END_CHAR = '\0';
 
     int bufPos = 0;
     int errCode = 0;
@@ -63,22 +68,22 @@ void read_file(FILE *inFile, List *lineList, char **lineBuf, int bufSize) {
     while (fgets(&buf[bufPos], bufSize - bufPos, inFile) != NULL) {
         // check buffer overflow
         bufPos += strlen(&buf[bufPos]);
-        if (buf[bufPos - 1] != '\n') {
+        if (buf[bufPos - 1] != NEW_LINE_CHAR) {
             errCode = expand_buffer(&buf, &bufSize);
-            if (errCode) {
+            if (errCode == FAILURE_CODE) {
                 break;
             }
             continue;
         }
         // truncate the new line character
-        buf[bufPos - 1] = '\0';
+        buf[bufPos - 1] = STRING_END_CHAR;
         // check if the read line is end command
-        if (strcmp(buf, END_COMMAND) == 0) {
+        if (STRCMP(buf, ==, END_COMMAND)) {
             break;
         }
         // append the line to the list
         errCode = list_append(lineList, buf);
-        if (errCode != 0) {
+        if (errCode == FAILURE_CODE) {
             break;
         }
         bufPos = 0;
@@ -87,8 +92,7 @@ void read_file(FILE *inFile, List *lineList, char **lineBuf, int bufSize) {
 }
 
 void print_list(List *list, FILE *outFile) {
-    int i = 1;
     for (ListNode *node = list->head; node != NULL; node = node->next) {
-        fprintf(outFile, "%d) %s\n", i++, node->str);
+        fprintf(outFile, "%s\n", node->str);
     }
 }

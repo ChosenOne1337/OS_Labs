@@ -2,6 +2,7 @@
 #define LIST_H
 
 #include <stddef.h>
+#include "constants.h"
 
 typedef struct ListNode {
     char *str;
