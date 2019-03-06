@@ -8,7 +8,7 @@
 
 int open_file(char *filename);
 int rewind_file(int fd);
-void close_file(int fd, char *filename);
+void close_file(int fd);
 
 int fill_size_table(int fd, size_t *lineSizes, int tableMaxSize);
 void fill_offset_table(off_t *lineOffsets, size_t *lineSizes, int tableSize);

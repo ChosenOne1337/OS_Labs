@@ -19,7 +19,7 @@ static char buf[BUFFER_SIZE];
 int open_file(char *filename) {
     int fd = open(filename, O_RDONLY);
     if (fd == OPEN_ERROR) {
-        fprintf(stderr, "Failed to open %s: %s", filename, strerror(errno));
+        fprintf(stderr, "Failed to open %s: %s\n", filename, strerror(errno));
         return FAILURE_CODE;
     }
     return fd;
@@ -37,10 +37,10 @@ int rewind_file(int fd) {
     return SUCCESS_CODE;
 }
 
-void close_file(int fd, char *filename) {
+void close_file(int fd) {
     int returnCode = close(fd);
     if (returnCode == CLOSE_ERROR) {
-        fprintf(stderr, "Failed to close %s: %s", filename, strerror(errno));
+        perror("Failed to close a file");
     }
 }
 
