@@ -1,109 +1,86 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 #include <libgen.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <fcntl.h>
-#include <errno.h>
+#include "fileutils.h"
 
 #define REQUIRED_ARG_NUM (2)
-#define OPEN_ERROR (-1)
-#define READ_ERROR (-1)
-#define CLOSE_ERROR (-1)
-
-#define FAILURE_CODE (1)
-#define SUCCESS_CODE (0)
-
 #define LINES_MAX_NUM (100)
+#define BUFFER_SIZE (256)
+#define TRUE (1)
 
-int open_file(char *filename) {
-    int fd = open(filename, O_RDONLY);
-    if (fd == OPEN_ERROR) {
-        fprintf(stderr, "Failed to open %s: %s", filename, strerror(errno));
+int read_integer_value(int *val) {
+    static char buf[BUFFER_SIZE];
+    char *res = fgets(buf, BUFFER_SIZE, stdin);
+    if (res == NULL) {
+
+    }
+    if (feof(stdin)) {
         return FAILURE_CODE;
     }
-    return fd;
-}
-
-void close_file(int fd, char *filename) {
-    int returnCode = close(fd);
-    if (returnCode == CLOSE_ERROR) {
-        fprintf(stderr, "Failed to close %s: %s", filename, strerror(errno));
+    if (ferror(stdin)) {
+        return FAILURE_CODE;
     }
+    printf("%s\n", buf);
+    return SUCCESS_CODE;
 }
 
 void print_usage(char *progPath) {
     fprintf(stderr, "Usage: %s <input file>\n", basename(progPath));
 }
 
-int fill_line_tables(int fd, int *lineSizes, off_t *lineOffsets, int tableMaxSize) {
-    static const char LINE_END_CHAR = '\n';
-    static char buf[BUFSIZ];
-    ssize_t readNum = 0;
-    off_t offset = 0;
-    int lineSize = 0, lineNo = 0;
-
-    while ((readNum = read(fd, buf, BUFSIZ)) != 0) {
-        if (readNum == READ_ERROR) {
-            perror("fill_line_tables(..) error while reading from a file");
-            return FAILURE_CODE;
+void handle_requests(int fd, size_t *lineSizes, off_t *lineOffsets, int tableSize) {
+    printf("Enter line number from 1 to %d, or 0 to exit\n", tableSize);
+    int lineNo = 0, returnCode = 0;
+    while (TRUE) {
+        printf(">> ");
+        returnCode = read_integer_value(&lineNo);
+        if (returnCode == FAILURE_CODE) {
+            continue;
         }
-
-        for (int bufPos = 0; bufPos < readNum; ++bufPos) {
-            if (buf[bufPos] == LINE_END_CHAR) {
-                lineSizes[lineNo] = lineSize + 1;
-                lineOffsets[lineNo] = offset;
-                offset += lineSize;
-                lineSize = 0;
-                ++lineNo;
-                continue;
-            }
-            ++lineSize;
+        if (lineNo < 0 || lineNo > tableSize) {
+            fprintf(stderr, "Line number must be from 1 to %d, you've entered %d\n",
+                    tableSize, lineNo);
+            continue;
         }
+        if (lineNo == 0) {
+            break;
+        }
+        print_line_from_file(fd, lineOffsets[lineNo - 1], lineSizes[lineNo - 1]);
     }
-    if (lineSize > 0) {
-        lineSizes[lineNo] = lineSize;
-        lineOffsets[lineNo] = offset;
-        ++lineNo;
-    }
-    // check on a error!
-    lseek(fd, 0, SEEK_SET);
-
-    return lineNo;
-}
-
-int handle_requests(int fd, int *lineSizes, off_t *lineOffsets, int tableSize) {
-    const char prompt[] = "Enter line number from 1 to %d, or 0 to exit\n";
-
-
-    return SUCCESS_CODE;
 }
 
 int main(int argc, char *argv[]) {
-    if (argc != REQUIRED_ARG_NUM) {
-        print_usage(argv[0]);
-        return EXIT_FAILURE;
+//    if (argc != REQUIRED_ARG_NUM) {
+//        print_usage(argv[0]);
+//        return EXIT_FAILURE;
+//    }
+
+//    char *filename = argv[1];
+//    int fd = open_file(filename);
+//    if (fd == FAILURE_CODE) {
+//        return EXIT_FAILURE;
+//    }
+
+//    static size_t lineSizes[LINES_MAX_NUM];
+//    static off_t lineOffsets[LINES_MAX_NUM];
+
+//    int linesNum = fill_size_table(fd, lineSizes, LINES_MAX_NUM);
+//    if (linesNum == FAILURE_CODE) {
+//        close_file(fd, filename);
+//        exit(EXIT_FAILURE);
+//    }
+//    fill_offset_table(lineOffsets, lineSizes, linesNum);
+
+//    handle_requests(fd, lineSizes, lineOffsets, linesNum);
+//    close_file(fd, filename);
+    while (1) {
+        printf(">> ");
+        int r = read_integer_value(NULL);
+        if (r == FAILURE_CODE) {
+            continue;
+        }
     }
-
-    char *filename = argv[1];
-    int fd = open_file(filename);
-    if (fd == FAILURE_CODE) {
-        return EXIT_FAILURE;
-    }
-
-    static int lineSizes[LINES_MAX_NUM];
-    static off_t lineOffsets[LINES_MAX_NUM];
-
-    int linesNum = fill_line_tables(fd, lineSizes, lineOffsets, LINES_MAX_NUM);
-    if (linesNum == FAILURE_CODE) {
-        close_file(fd, filename);
-        exit(EXIT_FAILURE);
-    }
-
-    handle_requests(fd, lineSizes, lineOffsets, linesNum);
-    close_file(fd, filename);
 
     return EXIT_SUCCESS;
 }
