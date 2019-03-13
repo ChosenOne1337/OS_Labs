@@ -5,13 +5,17 @@
 #include <libgen.h>
 #include <limits.h>
 #include <errno.h>
+#include <signal.h>
 #include "fileutils.h"
 #include "constants.h"
 
 #define REQUIRED_ARG_NUM (2)
-#define LINES_MAX_NUM (100)
+#define LINES_LIMIT (100)
 
-void handle_requests(int fd, size_t *lineSizes, off_t *lineOffsets, int tableSize);
+#define STDIN_ERROR_CODE (3)
+#define EXIT_CODE (4)
+
+int handle_request(FileInfo*);
 
 void print_usage(char *progPath) {
     fprintf(stderr, "Usage: %s <input file>\n", basename(progPath));
@@ -23,73 +27,95 @@ int main(int argc, char *argv[]) {
         return EXIT_FAILURE;
     }
 
+    FileInfo fileInfo;
     char *filename = argv[1];
-    int fd = open_file(filename);
-    if (fd == FAILURE_CODE) {
+    int returnCode = open_file(&fileInfo, filename);
+    if (returnCode == FAILURE_CODE) {
+        return EXIT_FAILURE;
+    }
+    returnCode = fill_file_info(&fileInfo, LINES_LIMIT);
+    if (returnCode == FAILURE_CODE) {
+        close_file(&fileInfo);
         return EXIT_FAILURE;
     }
 
-    static size_t lineSizes[LINES_MAX_NUM];
-    static off_t lineOffsets[LINES_MAX_NUM];
-    int linesNum = fill_size_table(fd, lineSizes, LINES_MAX_NUM);
-    if (linesNum == FAILURE_CODE) {
-        close_file(fd);
-        exit(EXIT_FAILURE);
-    }
-    fill_offset_table(lineOffsets, lineSizes, linesNum);
-
-    handle_requests(fd, lineSizes, lineOffsets, linesNum);
-    close_file(fd);
+    printf("Enter line number from 1 to %d, or 0 to exit\n", fileInfo.linesNum);
+    do {
+        returnCode = handle_request(&fileInfo);
+    } while (returnCode != EXIT_CODE && returnCode != STDIN_ERROR_CODE);
+    close_file(&fileInfo);
 
     return EXIT_SUCCESS;
 }
 
-#define BUFFER_SIZE (256)
 
-int parse_long(long *val);
+#define BUFFER_SIZE BUFSIZ
 
-void handle_requests(int fd, size_t *lineSizes, off_t *lineOffsets, int tableSize) {
-    printf("Enter line number from 1 to %d, or 0 to exit\n", tableSize);
-    long lineNo = 0;
-    int returnCode = 0, eofIndicator = 0, ferrorIndicator = 0;
-    for (;;) {
-        printf("\n>> ");
-        returnCode = parse_long(&lineNo);
-        eofIndicator = feof(stdin);
-        ferrorIndicator = ferror(stdin);
-        if (eofIndicator != NOT_EOF) {
-            fprintf(stderr, "End of file has been reached\n");
-            break;
-        }
-        if (ferrorIndicator != NO_FERROR) {
-            fprintf(stderr, "An error has occured while reading from the standard input\n");
-            break;
-        }
-        if (returnCode == FAILURE_CODE) {
-            fprintf(stderr, "Error while reading a line number: incorrect input\n");
-            continue;
-        }
-        if (lineNo < 0 || lineNo > tableSize) {
-            fprintf(stderr, "Line number must be from 1 to %d, you've entered %ld\n",
-                    tableSize, lineNo);
-            continue;
-        }
-        if (lineNo == 0) {
-            break;
-        }
-        print_line_from_file(fd, lineOffsets[lineNo - 1], lineSizes[lineNo - 1]);
-    }
-}
-
+int read_line(char *line, int bufLength);
+int parse_long(long *val, char *line);
 int is_whitespace_string(char *str);
+int get_line_number(long *lineNumber, long maxNumber);
 
-int parse_long(long *val) {
-    static char line[BUFFER_SIZE];
-    char *res = fgets(line, BUFFER_SIZE, stdin);
-    if (res == NULL) {
+int handle_request(FileInfo *fileInfo) {
+    long lineNo = 0;
+    int returnCode = get_line_number(&lineNo, fileInfo->linesNum);
+    if (returnCode != SUCCESS_CODE) {
+        return returnCode;
+    }
+
+    returnCode = print_line_from_file(fileInfo->fd, fileInfo->lineOffsets[lineNo - 1], fileInfo->lineSizes[lineNo - 1]);
+    if (returnCode == FAILURE_CODE) {
+        fprintf(stderr, "Failed to print a line from the file\n");
         return FAILURE_CODE;
     }
 
+    return SUCCESS_CODE;
+}
+
+int get_line_number(long *lineNumber, long maxNumber) {
+    long lineNo = 0;
+    int returnCode = 0, eofIndicator = 0, ferrorIndicator = 0;
+    static char buf[BUFFER_SIZE];
+
+    returnCode = read_line(buf, BUFFER_SIZE);
+    eofIndicator = feof(stdin);
+    ferrorIndicator = ferror(stdin);
+    if (eofIndicator != NOT_EOF) {
+        fprintf(stderr, "End of file has been reached\n");
+        return STDIN_ERROR_CODE;
+    }
+    if (ferrorIndicator != NO_FERROR) {
+        fprintf(stderr, "An error has occured while reading from the standard input\n");
+        return STDIN_ERROR_CODE;
+    }
+
+    returnCode = parse_long(&lineNo, buf);
+    if (returnCode == FAILURE_CODE) {
+        fprintf(stderr, "Error while reading a line number: incorrect input\n");
+        return FAILURE_CODE;
+    }
+    if (lineNo < 0 || lineNo > maxNumber) {
+        fprintf(stderr, "Line number must be from 1 to %ld, you've entered %ld\n",
+                maxNumber, lineNo);
+        return FAILURE_CODE;
+    }
+    if (lineNo == 0) {
+        return EXIT_CODE;
+    }
+    *lineNumber = lineNo;
+
+    return SUCCESS_CODE;
+}
+
+int read_line(char *line, int bufLength) {
+    char *res = fgets(line, bufLength, stdin);
+    if (res == NULL) {
+        return FAILURE_CODE;
+    }
+    return SUCCESS_CODE;
+}
+
+int parse_long(long *val, char *line) {
     int base = 10;
     char *lineTail = line;
     int errnoSaved = errno;

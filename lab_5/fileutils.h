@@ -6,11 +6,17 @@
 #define NOT_EOF (0)
 #define NO_FERROR (0)
 
-int open_file(char *filename);
-void close_file(int fd);
+typedef struct FileInfo {
+    int fd;
+    int linesNum;
+    size_t *lineSizes;
+    off_t *lineOffsets;
+} FileInfo;
 
-int fill_size_table(int fd, size_t *lineSizes, int tableMaxSize);
-void fill_offset_table(off_t *lineOffsets, size_t *lineSizes, int tableSize);
+int open_file(FileInfo *fileInfo, char *filename);
+int close_file(FileInfo *fileInfo);
+
+int fill_file_info(FileInfo *fileInfo, int linesLimit);
 int print_line_from_file(int fd, off_t pos, size_t lineSize);
 
 #endif // FILEUTILS_H

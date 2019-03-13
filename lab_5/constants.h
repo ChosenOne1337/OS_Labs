@@ -1,7 +1,7 @@
 #ifndef CONSTANTS_H
 #define CONSTANTS_H
 
-#define FAILURE_CODE (1)
+#define FAILURE_CODE (-1)
 #define SUCCESS_CODE (0)
 
 #define NO_ERROR (0)

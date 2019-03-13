@@ -11,7 +11,8 @@
 
 #define REQUIRED_ARG_NUM (2)
 #define LINES_LIMIT (100)
-#define SECS_TO_ALARM (5)
+#define ALARM_TIMEOUT (5)
+#define ALARM_RESET (0)
 
 #define INTERRUPTED_CODE (2)
 #define STDIN_ERROR_CODE (3)
@@ -47,11 +48,10 @@ int main(int argc, char *argv[]) {
 
     printf("Enter line number from 1 to %d, or 0 to exit\n", fileInfo.linesNum);
     signal(SIGALRM, handle_alarm_signal);
-    alarm(SECS_TO_ALARM);
-
+    alarm(ALARM_TIMEOUT);
     returnCode = handle_request(&fileInfo);
+    alarm(ALARM_RESET);
     if (returnCode == INTERRUPTED_CODE) {
-        alarm(0);
         printf("\n");
         print_file(fileInfo.fd);
     }

@@ -14,7 +14,7 @@ typedef struct FileInfo {
 } FileInfo;
 
 int open_file(FileInfo *fileInfo, char *filename);
-void close_file(FileInfo *fileInfo);
+int close_file(FileInfo *fileInfo);
 
 int fill_file_info(FileInfo *fileInfo, int linesLimit);
 int print_line_from_file(int fd, off_t pos, size_t lineSize);
