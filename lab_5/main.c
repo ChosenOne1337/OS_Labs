@@ -3,8 +3,10 @@
 #include <string.h>
 #include <ctype.h>
 #include <libgen.h>
+#include <limits.h>
 #include <errno.h>
 #include "fileutils.h"
+#include "constants.h"
 
 #define REQUIRED_ARG_NUM (2)
 #define LINES_MAX_NUM (100)
@@ -43,65 +45,84 @@ int main(int argc, char *argv[]) {
 }
 
 #define BUFFER_SIZE (256)
-#define TRUE (1)
 
 int parse_long(long *val);
 
 void handle_requests(int fd, size_t *lineSizes, off_t *lineOffsets, int tableSize) {
     printf("Enter line number from 1 to %d, or 0 to exit\n", tableSize);
     long lineNo = 0;
-    int returnCode = 0;
-    while (TRUE) {
+    int returnCode = 0, eofIndicator = 0, ferrorIndicator = 0;
+    for (;;) {
         printf("\n>> ");
         returnCode = parse_long(&lineNo);
-        if (feof(stdin)) {
+        eofIndicator = feof(stdin);
+        ferrorIndicator = ferror(stdin);
+        if (eofIndicator != NOT_EOF) {
             fprintf(stderr, "End of file has been reached\n");
             break;
-        } else if (ferror(stdin)) {
+        }
+        if (ferrorIndicator != NO_FERROR) {
             fprintf(stderr, "An error has occured while reading from the standard input\n");
             break;
-        } else if (returnCode == FAILURE_CODE) {
+        }
+        if (returnCode == FAILURE_CODE) {
             fprintf(stderr, "Error while reading a line number: incorrect input\n");
             continue;
-        } else if (lineNo < 0 || lineNo > tableSize) {
+        }
+        if (lineNo < 0 || lineNo > tableSize) {
             fprintf(stderr, "Line number must be from 1 to %d, you've entered %ld\n",
                     tableSize, lineNo);
             continue;
-        } else if (lineNo == 0) {
+        }
+        if (lineNo == 0) {
             break;
         }
         print_line_from_file(fd, lineOffsets[lineNo - 1], lineSizes[lineNo - 1]);
     }
 }
 
+int is_whitespace_string(char *str);
+
 int parse_long(long *val) {
-    static char buf[BUFFER_SIZE];
-    char *res = fgets(buf, BUFFER_SIZE, stdin);
+    static char line[BUFFER_SIZE];
+    char *res = fgets(line, BUFFER_SIZE, stdin);
     if (res == NULL) {
         return FAILURE_CODE;
     }
 
     int base = 10;
-    char *endPtr = NULL;
+    char *lineTail = line;
     int errnoSaved = errno;
-    errno = 0;
-    long number = strtol(buf, &endPtr, base);
-    if (endPtr == buf) {
-        return FAILURE_CODE;
-    } else if (errno == ERANGE) {
+    errno = NO_ERROR;
+    long number = strtol(line, &lineTail, base);
+    if (errno == ERANGE && (number == LONG_MAX || number == LONG_MIN)) {
         perror("parse_long(..) error");
         return FAILURE_CODE;
     }
-
-    static const char STR_END_CHAR = '\0';
-    for (; *endPtr != STR_END_CHAR; ++endPtr) {
-        if (!isspace(*endPtr)) {
-            return FAILURE_CODE;
-        }
+    if (number == 0 && errno != NO_ERROR) {
+        perror("parse_long(..) error");
+        return FAILURE_CODE;
+    }
+    if (lineTail == line) {
+        return FAILURE_CODE;
+    }
+    int isWhitespaceStr = is_whitespace_string(lineTail);
+    if (isWhitespaceStr == FALSE) {
+        return FAILURE_CODE;
     }
 
     *val = number;
     errno = errnoSaved;
 
     return SUCCESS_CODE;
+}
+
+int is_whitespace_string(char *str) {
+    static const char spaceCharSet[] = " \t\n\v\f\r";
+    unsigned long stringLength = strlen(str);
+    size_t spaceSequenceLen = strspn(str, spaceCharSet);
+    if ((size_t)stringLength != spaceSequenceLen) {
+        return FALSE;
+    }
+    return TRUE;
 }

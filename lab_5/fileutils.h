@@ -3,11 +3,10 @@
 
 #include <unistd.h>
 
-#define FAILURE_CODE (1)
-#define SUCCESS_CODE (0)
+#define NOT_EOF (0)
+#define NO_FERROR (0)
 
 int open_file(char *filename);
-int rewind_file(int fd);
 void close_file(int fd);
 
 int fill_size_table(int fd, size_t *lineSizes, int tableMaxSize);
