@@ -74,21 +74,13 @@ int handle_request(FileInfo *fileInfo) {
 
 int get_line_number(long *lineNumber, long maxNumber) {
     long lineNo = 0;
-    int returnCode = 0, eofIndicator = 0, ferrorIndicator = 0;
+    int returnCode = 0;
     static char buf[BUFFER_SIZE];
 
     returnCode = read_line(buf, BUFFER_SIZE);
-    eofIndicator = feof(stdin);
-    ferrorIndicator = ferror(stdin);
-    if (eofIndicator != NOT_EOF) {
-        fprintf(stderr, "End of file has been reached\n");
-        return STDIN_ERROR_CODE;
+    if (returnCode != SUCCESS_CODE) {
+        return returnCode;
     }
-    if (ferrorIndicator != NO_FERROR) {
-        fprintf(stderr, "An error has occured while reading from the standard input\n");
-        return STDIN_ERROR_CODE;
-    }
-
     returnCode = parse_long(&lineNo, buf);
     if (returnCode == FAILURE_CODE) {
         fprintf(stderr, "Error while reading a line number: incorrect input\n");
@@ -109,10 +101,21 @@ int get_line_number(long *lineNumber, long maxNumber) {
 
 int read_line(char *line, int bufLength) {
     char *res = fgets(line, bufLength, stdin);
-    if (res == NULL) {
-        return FAILURE_CODE;
+    if (res != NULL) {
+        return SUCCESS_CODE;
     }
-    return SUCCESS_CODE;
+    int eofIndicator = 0, ferrorIndicator = 0;
+    eofIndicator = feof(stdin);
+    ferrorIndicator = ferror(stdin);
+    if (eofIndicator != NOT_EOF) {
+        fprintf(stderr, "End of file has been reached\n");
+        return STDIN_ERROR_CODE;
+    }
+    if (ferrorIndicator != NO_FERROR) {
+        fprintf(stderr, "An error has occured while reading from the standard input\n");
+        return STDIN_ERROR_CODE;
+    }
+    return FAILURE_CODE;
 }
 
 int parse_long(long *val, char *line) {

@@ -16,9 +16,6 @@
 #define CLOSE_ERROR (-1)
 
 #define FILE_BEG_POS (0)
-#define BUFFER_SIZE BUFSIZ
-
-static char buf[BUFFER_SIZE];
 
 static int fill_size_table(FileInfo *fileInfo, int linesLimit);
 static void fill_offset_table(FileInfo *fileInfo);
@@ -96,9 +93,16 @@ static int fill_size_table(FileInfo *fileInfo, int linesLimit) {
     size_t lineSize = 0;
     int lineNo = 0;
 
+    const int BUFFER_SIZE = BUFSIZ;
+    char *buf = (char*)calloc(BUFFER_SIZE, sizeof(char));
+    if (buf == NULL) {
+        perror("fill_line_table(..) error");
+        return FAILURE_CODE;
+    }
     while ((charsRead = read(fileInfo->fd, buf, BUFFER_SIZE)) != 0) {
         if (charsRead == READ_ERROR) {
             perror("fill_line_table(..) error while reading from a file");
+            free(buf);
             return FAILURE_CODE;
         }
         for (ssize_t bufPos = 0; bufPos < charsRead; ++bufPos) {
@@ -107,8 +111,8 @@ static int fill_size_table(FileInfo *fileInfo, int linesLimit) {
                 continue;
             }
             if (lineNo >= linesLimit) {
-                fprintf(stderr, "fill_line_table(..) error: "
-                                "number of lines exceeded lines limit\n");
+                fprintf(stderr, "fill_line_table(..) error: number of lines exceeded lines limit\n");
+                free(buf);
                 return FAILURE_CODE;
             }
             fileInfo->lineSizes[lineNo++] = lineSize;
@@ -119,6 +123,7 @@ static int fill_size_table(FileInfo *fileInfo, int linesLimit) {
         fileInfo->lineSizes[lineNo++] = lineSize;
     }
     fileInfo->linesNum = lineNo;
+    free(buf);
 
     return SUCCESS_CODE;
 }
@@ -131,8 +136,8 @@ static void fill_offset_table(FileInfo *fileInfo) {
     }
 }
 
-int print_file(int fd) {
-    off_t returnVal = lseek(fd, FILE_BEG_POS, SEEK_SET);
+int print_file(FileInfo *fileinfo) {
+    off_t returnVal = lseek(fileinfo->fd, FILE_BEG_POS, SEEK_SET);
     if (returnVal == LSEEK_ERROR) {
         perror("print_file(..) error while rewinding a file");
         return FAILURE_CODE;
@@ -140,44 +145,63 @@ int print_file(int fd) {
 
     int returnCode = 0;
     ssize_t bytesRead = 0;
-    while ((bytesRead = read(fd, buf, BUFFER_SIZE)) != 0) {
+    const int BUFFER_SIZE = BUFSIZ;
+    char *buf = (char*)calloc(BUFFER_SIZE, sizeof(char));
+    if (buf == NULL) {
+        perror("print_file(..) error");
+        return FAILURE_CODE;
+    }
+    while ((bytesRead = read(fileinfo->fd, buf, BUFFER_SIZE)) != 0) {
         if (bytesRead == READ_ERROR) {
             perror("print_file(..) error while reading from a file");
+            free(buf);
             return FAILURE_CODE;
         }
         returnCode = write_with_retry(STDOUT_FILENO, buf, (size_t)bytesRead);
         if (returnCode == FAILURE_CODE) {
             fprintf(stderr, "print_file(..) error: failed to print a file\n");
+            free(buf);
             return FAILURE_CODE;
         }
     }
+    free(buf);
 
     return SUCCESS_CODE;
 }
 
-int print_line_from_file(int fd, off_t pos, size_t lineSize) {
-    off_t returnVal = lseek(fd, pos, SEEK_SET);
+int print_line_from_file(FileInfo *fileinfo, long lineNo) {
+    off_t returnVal = lseek(fileinfo->fd, fileinfo->lineOffsets[lineNo], SEEK_SET);
     if (returnVal == LSEEK_ERROR) {
         perror("print_line_from_file(..) error while setting starting position in a file");
         return FAILURE_CODE;
     }
 
     int returnCode = 0;
-    size_t charsRemained = lineSize, charsToPrint = 0;
+    size_t charsRemained = fileinfo->lineSizes[lineNo], charsToPrint = 0;
+    const int BUFFER_SIZE = BUFSIZ;
+    char *buf = (char*)calloc(BUFFER_SIZE, sizeof(char));
+    if (buf == NULL) {
+        perror("print_line_from_file(..) error");
+        return FAILURE_CODE;
+    }
     while (charsRemained > 0) {
         charsToPrint = charsRemained < BUFFER_SIZE ? charsRemained : BUFFER_SIZE;
-        returnCode = read_with_retry(fd, buf, charsToPrint);
+        returnCode = read_with_retry(fileinfo->fd, buf, charsToPrint);
         if (returnCode == FAILURE_CODE) {
             fprintf(stderr, "print_line_from_file(..) error: failed to read a line\n");
+            free(buf);
             return FAILURE_CODE;
         }
         returnCode = write_with_retry(STDOUT_FILENO, buf, charsToPrint);
         if (returnCode == FAILURE_CODE) {
             fprintf(stderr, "print_line_from_file(..) error: failed to print a line\n");
+            free(buf);
             return FAILURE_CODE;
         }
         charsRemained -= charsToPrint;
     }
+    free(buf);
+
     return SUCCESS_CODE;
 }
 
@@ -186,7 +210,6 @@ static int read_with_retry(int fd, char *buf, size_t bytesToRead) {
     size_t bytesRemained = bytesToRead;
     size_t bufPos = 0;
 
-    int errnoSaved = errno;
     do {
         errno = NO_ERROR;
         bufPos = bytesToRead - bytesRemained;
@@ -204,7 +227,6 @@ static int read_with_retry(int fd, char *buf, size_t bytesToRead) {
         }
         bytesRemained -= (size_t)bytesRead;
     } while (bytesRemained > 0);
-    errno = errnoSaved;
 
     return SUCCESS_CODE;
 }
@@ -214,7 +236,6 @@ static int write_with_retry(int fd, const char *buf, size_t bytesToWrite) {
     size_t bytesRemained = bytesToWrite;
     size_t bufPos = 0;
 
-    int errnoSaved = errno;
     do {
         errno = NO_ERROR;
         bufPos = bytesToWrite - bytesRemained;
@@ -228,7 +249,6 @@ static int write_with_retry(int fd, const char *buf, size_t bytesToWrite) {
         }
         bytesRemained -= (size_t)bytesWritten;
     } while (bytesRemained > 0);
-    errno = errnoSaved;
 
     return SUCCESS_CODE;
 }

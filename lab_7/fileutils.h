@@ -8,6 +8,8 @@
 
 typedef struct FileInfo {
     int fd;
+    size_t mappedFileSize;
+    char *data;
     int linesNum;
     size_t *lineSizes;
     off_t *lineOffsets;
