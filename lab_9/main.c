@@ -5,7 +5,6 @@
 #include <sys/types.h>
 #include <wait.h>
 
-#define REQUIRED_ARGS_NUM (2)
 #define FORK_ERROR_CODE (-1)
 #define CHILD_RETURN_CODE (0)
 #define WAIT_ERROR_CODE (-1)
@@ -14,23 +13,29 @@
 #define FAILURE_CODE (-1)
 
 int wait_for_child_process(void);
-int fork_and_exec_command(char *cmdName, char *argv[]);
+int execute_program(char *progName, char *argv[]);
 
 void print_usage(char *progPath) {
     fprintf(stderr, "Usage: %s <filename>\n", basename(progPath));
 }
 
+typedef enum ArgvIndex {
+    ProgPathIndex,
+    FileNameIndex,
+    RequiredArgsNum
+} ArgvIndex;
+
 int main(int argc, char *argv[]) {
-    char *progPath = argv[0];
-    if (argc != REQUIRED_ARGS_NUM) {
+    char *progPath = argv[ProgPathIndex];
+    if (argc != RequiredArgsNum) {
         print_usage(progPath);
         return EXIT_FAILURE;
     }
 
     char cmd[] = "cat";
-    char *filename = argv[1];
+    char *filename = argv[FileNameIndex];
     char *cmdArgv[] = {cmd, filename, NULL};
-    int returnCode = fork_and_exec_command(cmd, cmdArgv);
+    int returnCode = execute_program(cmd, cmdArgv);
     if (returnCode == FAILURE_CODE) {
         return EXIT_FAILURE;
     }
@@ -43,14 +48,14 @@ int main(int argc, char *argv[]) {
     return EXIT_SUCCESS;
 }
 
-int fork_and_exec_command(char *cmdName, char *argv[]) {
+int execute_program(char *progName, char *argv[]) {
     pid_t forkReturnCode = fork();
     if (forkReturnCode == FORK_ERROR_CODE) {
         perror("fork error");
         return FAILURE_CODE;
     }
     if (forkReturnCode == CHILD_RETURN_CODE) {
-        execvp(cmdName, argv);
+        execvp(progName, argv);
         perror("execvp error");
         exit(EXIT_FAILURE);
     }
