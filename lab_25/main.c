@@ -6,10 +6,12 @@
 #include <libgen.h>
 #include <sys/types.h>
 #include <wait.h>
+#include <errno.h>
 
 #define FORK_ERROR_CODE (-1)
 #define CHILD_RETURN_CODE (0)
 #define WAIT_ERROR_CODE (-1)
+#define NO_ERROR (0)
 
 #define PIPE_ERROR (-1)
 #define READ_ERROR (-1)
@@ -56,7 +58,7 @@ int first_process_work(int pipeFildes[EndsNumber]) {
     } else {
         char message[MSG_SIZE] = "qWeRtYuIoP aSdFgHjKl ZxCvBnM";
         size_t messageSize = strlen(message);
-        printf("Initial message:\n%s\n", message);
+        printf("Original message:\n%s\n", message);
 
         ssize_t bytesWritten = write(pipeFildes[SecondEnd], message, messageSize);
         if (bytesWritten == WRITE_ERROR) {
@@ -118,6 +120,13 @@ int close_pipe_ends(int pipeFildes[EndsNumber]) {
     return exitCode;
 }
 
+void wait_child_processes(void) {
+    errno = NO_ERROR;
+    while (errno != ECHILD) {
+        wait(NULL);
+    }
+}
+
 int main(int argc, char *argv[]) {
     int pipeFildes[EndsNumber] = {0};
     int returnCode = pipe(pipeFildes);
@@ -147,6 +156,7 @@ int main(int argc, char *argv[]) {
     }
 
     int exitCode = close_pipe_ends(pipeFildes);
+    wait_child_processes();
 
     return exitCode;
 }
