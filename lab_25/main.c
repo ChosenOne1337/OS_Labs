@@ -138,6 +138,7 @@ int main(int argc, char *argv[]) {
     pid_t forkReturnCode = fork();
     if (forkReturnCode == FORK_ERROR_CODE) {
         perror("fork error");
+        close_pipe_ends(pipeFildes);
         return EXIT_FAILURE;
     }
     if (forkReturnCode == CHILD_RETURN_CODE) {
@@ -148,6 +149,7 @@ int main(int argc, char *argv[]) {
     forkReturnCode = fork();
     if (forkReturnCode == FORK_ERROR_CODE) {
         perror("fork error");
+        close_pipe_ends(pipeFildes);
         return EXIT_FAILURE;
     }
     if (forkReturnCode == CHILD_RETURN_CODE) {

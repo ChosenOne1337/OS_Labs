@@ -1,0 +1,36 @@
+#include <sys/types.h>
+#include <stdio.h>
+#include <time.h>
+#include <stdlib.h>
+
+#define BASE_YEAR 1900
+#define SEC_PER_HOUR 3600
+
+#define UTC_TZ (0)
+#define PST_TZ (-8)
+#define TIME_ZONE PST_TZ
+
+extern char *tzname[];
+
+int main() {
+    time_t now;
+    struct tm *sp;
+    (void) time( &now );
+    printf("Local time: %s", ctime( &now ) );
+
+    // get UTC time as tm structure
+    sp = gmtime(&now);
+    // convert to time_t
+    now = mktime(sp);
+    // add time zone offset
+    now += TIME_ZONE * SEC_PER_HOUR;
+    // convert back to tm structure
+    sp = localtime(&now);
+    // print human-readable date in given time zone
+    printf("PST Time: %d/%d/%02d %d:%02d\n",
+        sp->tm_mon + 1, sp->tm_mday,
+        sp->tm_year + BASE_YEAR, sp->tm_hour,
+        sp->tm_min);
+
+    exit(0);
+}
