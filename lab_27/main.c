@@ -29,25 +29,27 @@ int count_empty_lines(FILE *inputFile, FILE *outputPipe) {
     static const int emptyLineLen = 1;
     static char buf[BUFSIZ];
 
-    int lineHasEnded = TRUE;
+    int lineIsSplitted = FALSE;
     while (fgets(buf, BUFSIZ, inputFile) != NULL) {
         size_t lineLen = strlen(buf);
         if (buf[lineLen - 1] != endLineChar) {
-            lineHasEnded = FALSE;
+            lineIsSplitted = TRUE;
             continue;
         }
-        if (lineLen == emptyLineLen && lineHasEnded == TRUE) {
-            int charsWritten = fputs(buf, outputPipe);
-            if (charsWritten == FPUTS_ERROR) {
-                perror("fputs error");
-                return FAILURE_CODE;
-            }
+        if (lineLen != emptyLineLen || lineIsSplitted == TRUE) {
+            lineIsSplitted = FALSE;
+            continue;
         }
-        lineHasEnded = TRUE;
+        int charsWritten = fputs(buf, outputPipe);
+        if (charsWritten == FPUTS_ERROR) {
+            perror("fputs error");
+            return FAILURE_CODE;
+        }
+        lineIsSplitted = FALSE;
     }
 
-    int inputErrorIndicator = ferror(inputFile);
-    if (inputErrorIndicator) {
+    int inputErrorOccured = ferror(inputFile);
+    if (inputErrorOccured) {
         perror("fgets error");
         return FAILURE_CODE;
     }
@@ -55,26 +57,22 @@ int count_empty_lines(FILE *inputFile, FILE *outputPipe) {
     return SUCCESS_CODE;
 }
 
-int close_files(FILE *inputFile, FILE *outputPipe) {
-    int returnCode = SUCCESS_CODE;
-
-    if (inputFile != NULL) {
-        int fcloseCode = fclose(inputFile);
-        if (fcloseCode == FCLOSE_ERROR) {
-            perror("fclose");
-            returnCode = FAILURE_CODE;
-        }
+int close_file(FILE *inputFile) {
+    int fcloseCode = fclose(inputFile);
+    if (fcloseCode == FCLOSE_ERROR) {
+        perror("fclose");
+        return FAILURE_CODE;
     }
+    return SUCCESS_CODE;
+}
 
-    if (outputPipe != NULL) {
-        int pcloseCode = pclose(outputPipe);
-        if (pcloseCode == PCLOSE_ERROR) {
-            perror("pclose");
-            returnCode = FAILURE_CODE;
-        }
+int close_pipe(FILE *pipe) {
+    int pcloseCode = pclose(pipe);
+    if (pcloseCode == PCLOSE_ERROR) {
+        perror("pclose");
+        return FAILURE_CODE;
     }
-
-    return returnCode;
+    return SUCCESS_CODE;
 }
 
 int main(int argc, char *argv[]) {
@@ -93,7 +91,7 @@ int main(int argc, char *argv[]) {
 
     FILE *outputPipe = popen("wc -l", "w");
     if (outputPipe == NULL) {
-        close_files(inputFile, outputPipe);
+        close_file(inputFile);
         return EXIT_FAILURE;
     }
 
@@ -103,7 +101,12 @@ int main(int argc, char *argv[]) {
         exitCode = EXIT_FAILURE;
     }
 
-    returnCode = close_files(inputFile, outputPipe);
+    returnCode = close_file(inputFile);
+    if (returnCode == FAILURE_CODE) {
+        exitCode = EXIT_FAILURE;
+    }
+
+    returnCode = close_pipe(outputPipe);
     if (returnCode == FAILURE_CODE) {
         exitCode = EXIT_FAILURE;
     }
