@@ -5,76 +5,104 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
 
 #include "protocol.h"
 #include "errorcodes.h"
+#include "communications.h"
+#include "message.h"
 
-int create_message_queue() {
-    key_t key = ftok(".", '$');
+#define PROG_PATH_INDEX (0)
+
+#define STRCMP(a, R, b) (strcmp(a, b) R 0)
+
+int open_message_queue() {
+    key_t key = ftok(FTOK_PATHNAME, FTOK_ID);
     if (key == FTOK_ERROR) {
         perror("ftok error");
         return FAILURE_CODE;
     }
 
     int msgflg = 0;
-    int msgID = msgget(key, msgflg);
-    if (msgID == MSGGET_ERROR) {
+    int msgid = msgget(key, msgflg);
+    if (msgid == MSGGET_ERROR) {
         perror("msgget error");
         return FAILURE_CODE;
     }
 
-    return msgID;
+    return msgid;
 }
 
 
-int receive_messages(int msqID) {
-    static Message msg;
-
-    int msgflg = 0;
-    do {
-        ssize_t bytesReceived = msgrcv(msqID, &msg, MESSAGE_SIZE, ANY_MESSAGE_TYPE, msgflg);
-        if (bytesReceived == MSGRCV_ERROR) {
-            return FAILURE_CODE;
-        }
-        if (msg.type == MESSAGE_TYPE) {
-            printf("message type: %ld\n"
-                   "message size: %zd bytes\n"
-                   "message: %s\n\n",
-                   MESSAGE_TYPE, bytesReceived, msg.buf);
-        }
-    } while (msg.type != FINAL_MESSAGE_TYPE);
-
-    return SUCCESS_CODE;
-}
-
-int send_acknowledge_message(int msqID) {
-    static Message msg = {
-        .type = ACK_MESSAGE_TYPE,
-        .buf = ""
-    };
-
-    int msgflg = 0;
-    int returnCode = msgsnd(msqID, &msg, ACK_MESSAGE_SIZE, msgflg);
-
-    if (returnCode == MSGSND_ERROR) {
+int receive_listener_id(int msqid, long *listenerID) {
+    Message *responseMessage = message_create(REGISTER_RESPONSE_SIZE);
+    if (responseMessage == MESSAGE_CREATE_ERROR) {
         return FAILURE_CODE;
     }
 
+    int returnCode = receive_message(msqid, REGISTER_RESPONSE_TYPE, MSGFLG_EMPTY, responseMessage);
+    if (returnCode == FAILURE_CODE) {
+        message_destroy(responseMessage);
+        return FAILURE_CODE;
+    }
+
+    long *data = (long*) message_get_data(responseMessage);
+    *listenerID = *data;
+
+    message_destroy(responseMessage);
+
     return SUCCESS_CODE;
 }
 
+int handle_messages(int msqid, long listenerID, char *progPath) {
+    Message *message = message_create_empty();
+    if (message == MESSAGE_CREATE_ERROR) {
+        return FAILURE_CODE;
+    }
+
+    int finalMessageReceived = FALSE;
+    while (!finalMessageReceived) {
+        int returnCode = receive_indefinite_size_message(msqid, listenerID, MSGFLG_EMPTY, message);
+        if (returnCode == FAILURE_CODE) {
+            break;
+        }
+
+        char *line = message_get_data(message);
+        finalMessageReceived = STRCMP(FINAL_MESSAGE, ==, line);
+        if (!finalMessageReceived) {
+            printf("[%s]:\n%s\n\n", progPath, line);
+        }
+    }
+
+    message_destroy(message);
+
+    return finalMessageReceived ? SUCCESS_CODE : FAILURE_CODE;
+}
+
 int main(int argc, char *argv[]) {
-    int msqID = open_message_queue();
-    if (msqID == FAILURE_CODE) {
+    int msqid = open_message_queue();
+    if (msqid == FAILURE_CODE) {
         return EXIT_FAILURE;
     }
 
-    int returnCode = receive_messages(msqID);
+    int returnCode = send_message_unformed(msqid, REGISTER_REQUEST_TYPE, REGISTER_REQUEST_MESSAGE, REGISTER_REQUEST_SIZE);
     if (returnCode == FAILURE_CODE) {
         return EXIT_FAILURE;
     }
 
-    returnCode = send_acknowledge_message(msqID);
+    long listenerID;
+    returnCode = receive_listener_id(msqid, &listenerID);
+    if (returnCode == FAILURE_CODE) {
+        return EXIT_FAILURE;
+    }
+
+    char *progPath = argv[PROG_PATH_INDEX];
+    returnCode = handle_messages(msqid, listenerID, progPath);
+    if (returnCode == FAILURE_CODE) {
+        return EXIT_FAILURE;
+    }
+
+    returnCode = send_message_unformed(msqid, ACK_MESSAGE_TYPE, ACK_MESSAGE, ACK_MESSAGE_SIZE);
     if (returnCode == FAILURE_CODE) {
         return EXIT_FAILURE;
     }

@@ -5,18 +5,24 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <errno.h>
+#include <signal.h>
 #include <string.h>
 
 #include "protocol.h"
+#include "communications.h"
 #include "message.h"
 #include "errorcodes.h"
 #include "range.h"
 
-#define NO_ERROR (0)
-#define NO_REQUESTS_CODE (1)
 #define GETLINE_ERROR (-1)
 
 #define PERM_MODE (0660)
+
+typedef void (*sighandler_t)(int);
+
+void acknowledge_timeout_handler(int sig) {
+    fprintf(stderr, "Acknowledge message timeout\n");
+}
 
 int create_message_queue() {
     key_t key = ftok(FTOK_PATHNAME, FTOK_ID);
@@ -51,41 +57,18 @@ int receive_register_request(int msqid) {
         return FAILURE_CODE;
     }
 
-    errno = NO_ERROR;
-    msgrcv(msqid, requestMessage->buffer, REGISTER_REQUEST_SIZE, REGISTER_REQUEST_TYPE, IPC_NOWAIT);
+    int returnCode = receive_message(msqid, REGISTER_REQUEST_TYPE, MSGFLG_NO_WAIT, requestMessage);
+    if (returnCode == NO_MESSAGES_CODE) {
+        message_destroy(requestMessage);
+        return NO_MESSAGES_CODE;
+    }
+
+    if (returnCode != SUCCESS_CODE) {
+        message_destroy(requestMessage);
+        return FAILURE_CODE;
+    }
+
     message_destroy(requestMessage);
-
-    if (errno == ENOMSG) {
-        return NO_REQUESTS_CODE;
-    }
-
-    if (errno != NO_ERROR) {
-        perror("msgrcv error");
-        return FAILURE_CODE;
-    }
-
-    return SUCCESS_CODE;
-}
-
-int send_register_response(int msqid, long newListenerID) {
-    Message *responseMessage = message_create(REGISTER_RESPONSE_SIZE);
-    if (responseMessage == MESSAGE_CREATE_ERROR) {
-        return FAILURE_CODE;
-    }
-
-    message_set_type(responseMessage, REGISTER_RESPONSE_TYPE);
-    int returnCode = message_set_data(responseMessage, &newListenerID, sizeof (newListenerID));
-    if (returnCode == FAILURE_CODE) {
-        message_destroy(responseMessage);
-        return FAILURE_CODE;
-    }
-
-    const static int msgflg = 0;
-    returnCode = msgsnd(msqid, responseMessage->buffer, responseMessage->size, msgflg);
-    message_destroy(responseMessage);
-    if (returnCode == FAILURE_CODE) {
-        return FAILURE_CODE;
-    }
 
     return SUCCESS_CODE;
 }
@@ -98,114 +81,118 @@ int accept_listeners(int msqid, Range *listeners) {
         long newListenerID = lowestListenerID + listenersNumber++;
         range_resize(listeners, listenersNumber);
 
-        returnCode = send_register_response(msqid, newListenerID);
+        returnCode = send_message_unformed(msqid, REGISTER_RESPONSE_TYPE, &newListenerID, sizeof (newListenerID));
         if (returnCode == FAILURE_CODE) {
             return FAILURE_CODE;
         }
     }
 
-    if (returnCode == NO_REQUESTS_CODE) {
+    if (returnCode == NO_MESSAGES_CODE) {
         return SUCCESS_CODE;
     }
 
     return FAILURE_CODE;
 }
 
-int broadcast_message(int msqid, Message *message, Range *listeners) {
-    long largestListenerID = range_get_upper_bound(listeners);
-    for (long listenerID = 0; listenerID < largestListenerID; ++listenerID) {
-        long type = listenerID;
-        message_set_type(message, type);
 
-        const static int msgflg = 0;
-        int returnCode = msgsnd(msqid, message->buffer, message->size, msgflg);
-        if (returnCode == MSGSND_ERROR) {
-            perror("msgsnd error");
-            return FAILURE_CODE;
-        }
+int broadcast_message(int msqid, const void *data, size_t length, Range *listeners) {
+    long listenersNumber = range_get_extent(listeners);
+    if (listenersNumber == 0) {
+        return SUCCESS_CODE;
     }
 
-    return SUCCESS_CODE;
-}
-
-// RENAME!!!!!
-int send_messages(int msqid, Range *listeners) {
     Message *message = message_create_empty();
     if (message == MESSAGE_CREATE_ERROR) {
         return FAILURE_CODE;
     }
 
-    char *line = NULL;
-    size_t lineLength = 0;
-    ssize_t charsRead = 0;
-    int returnCode = SUCCESS_CODE;
-    while ((charsRead = getline(&line, &lineLength, stdin)) != GETLINE_ERROR) {
-        returnCode = accept_listeners(msqid, listeners);
+    int returnCode = message_set_data(message, data, length);
+    if (returnCode == FAILURE_CODE) {
+        message_destroy(message);
+        return FAILURE_CODE;
+    }
+
+    long lowestListenerID = range_get_lower_bound(listeners);
+    long largestListenerID = range_get_upper_bound(listeners);
+    for (long listenerID = lowestListenerID; listenerID < largestListenerID; ++listenerID) {
+        message_set_type(message, listenerID);
+        int returnCode = send_message_formed(msqid, message);
         if (returnCode == FAILURE_CODE) {
-            break;
-        }
-        returnCode = message_set_data(message, line, lineLength + 1);
-        if (returnCode == FAILURE_CODE) {
-            break;
-        }
-        returnCode = broadcast_message(msqid, message, listeners);
-        if (returnCode == FAILURE_CODE) {
-            break;
+            message_destroy(message);
+            return FAILURE_CODE;
         }
     }
 
-    int inputErrorOccured = ferror(stdin);
-    if (inputErrorOccured) {
-        returnCode = FAILURE_CODE;
-    }
-
-    free(line);
     message_destroy(message);
-
-    return returnCode;
-}
-
-int send_final_message(int msqid, Range *listeners) {
-    Message *finalMessage = message_create_empty();
-    if (finalMessage == MESSAGE_CREATE_ERROR) {
-        return FAILURE_CODE;
-    }
-
-    int returnCode = message_set_data(finalMessage, FINAL_MESSAGE, FINAL_MESSAGE_SIZE);
-    if (returnCode == FAILURE_CODE) {
-        message_destroy(finalMessage);
-        return FAILURE_CODE;
-    }
-
-    returnCode = broadcast_message(msqid, finalMessage, listeners);
-    if (returnCode == FAILURE_CODE) {
-        message_destroy(finalMessage);
-        return FAILURE_CODE;
-    }
-
-    message_destroy(finalMessage);
 
     return SUCCESS_CODE;
 }
 
+
+size_t truncate_newline_char(char *line, size_t lineLength) {
+    const static char NEW_LINE_CHAR = '\n';
+    const static char END_STRING_CHAR = '\0';
+
+    if (lineLength == 0) {
+        return lineLength;
+    }
+
+    if (line[lineLength - 1] != NEW_LINE_CHAR) {
+        return lineLength;
+    }
+
+    line[lineLength - 1] = END_STRING_CHAR;
+
+    return lineLength - 1;
+}
+
+// RENAME!!!!!
+int send_messages(int msqid, Range *listeners) {
+    char *line = NULL;
+    size_t lineBufferSize = 0;
+    ssize_t charsRead = 0;
+    while ((charsRead = getline(&line, &lineBufferSize, stdin)) != GETLINE_ERROR) {
+        int returnCode = accept_listeners(msqid, listeners);
+        if (returnCode == FAILURE_CODE) {
+            free(line);
+            return FAILURE_CODE;
+        }
+
+        size_t lineLength = truncate_newline_char(line, (size_t) charsRead);
+        returnCode = broadcast_message(msqid, line, lineLength + 1, listeners);
+        if (returnCode == FAILURE_CODE) {
+            free(line);
+            return FAILURE_CODE;
+        }
+    }
+
+    free(line);
+
+    int inputErrorOccured = ferror(stdin);
+    if (inputErrorOccured) {
+        return FAILURE_CODE;
+    }
+
+    return SUCCESS_CODE;
+}
+
+
 int receive_acknowledge_messages(int msqid, Range *listeners) {
-    Message *ackMessage = message_create_empty();
+    sighandler_t prevHandler = signal(SIGALRM, acknowledge_timeout_handler);
+    if (prevHandler == SIG_ERR) {
+        return FAILURE_CODE;
+    }
+
+    Message *ackMessage = message_create(ACK_MESSAGE_SIZE);
     if (ackMessage == MESSAGE_CREATE_ERROR) {
         return FAILURE_CODE;
     }
 
-    message_set_type(ackMessage, ACK_MESSAGE_TYPE);
-    int returnCode = message_set_data(ackMessage, ACK_MESSAGE, ACK_MESSAGE_SIZE);
-    if (returnCode == FAILURE_CODE) {
-        message_destroy(ackMessage);
-        return FAILURE_CODE;
-    }
-
-    static const int msgflg = 0;
     long listenersNumber = range_get_extent(listeners);
     for (long messagesReceived = 0; messagesReceived < listenersNumber; ++messagesReceived) {
-        ssize_t bytesReceived = msgrcv(msqid, ackMessage->buffer, ackMessage->size, ACK_MESSAGE_TYPE, msgflg);
-        if (bytesReceived == MSGRCV_ERROR) {
+        alarm(ACKNOWLEDGE_TIMEOUT);
+        int returnCode = receive_message(msqid, ACK_MESSAGE_TYPE, MSGFLG_EMPTY, ackMessage);
+        if (returnCode != SUCCESS_CODE) {
             message_destroy(ackMessage);
             return FAILURE_CODE;
         }
@@ -227,7 +214,7 @@ int exchange_messages(int msqid) {
         return FAILURE_CODE;
     }
 
-    returnCode = send_final_message(msqid, &listeners);
+    returnCode = broadcast_message(msqid, FINAL_MESSAGE, FINAL_MESSAGE_SIZE, &listeners);
     if (returnCode == FAILURE_CODE) {
         return FAILURE_CODE;
     }
@@ -239,6 +226,7 @@ int exchange_messages(int msqid) {
 
     return SUCCESS_CODE;
 }
+
 
 int main(int argc, char *argv[]) {
     int msqid = create_message_queue();

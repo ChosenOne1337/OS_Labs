@@ -91,3 +91,12 @@ int message_set_data(Message *message, const void *newData, size_t dataLength) {
 
     return SUCCESS_CODE;
 }
+
+int message_resize(Message *message, size_t newSize) {
+    int returnCode = message_resize_buffer(message, newSize + sizeof (long));
+    if (returnCode == FAILURE_CODE) {
+        return FAILURE_CODE;
+    }
+    message->size = newSize;
+    return SUCCESS_CODE;
+}
