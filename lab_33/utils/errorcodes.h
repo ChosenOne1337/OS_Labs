@@ -4,7 +4,7 @@
 #define TRUE (1)
 #define FALSE (0)
 
-#define SUCCESS_CODE (0)
 #define FAILURE_CODE (-1)
+#define SUCCESS_CODE (0)
 
 #endif // ERRORCODES_H

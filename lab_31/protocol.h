@@ -12,14 +12,10 @@
 
 #define REGISTER_REQUEST_MESSAGE    ("")
 #define FINAL_MESSAGE               ("\n$")
-#define ACK_MESSAGE                 ("")
 
 #define REGISTER_REQUEST_SIZE       (sizeof (REGISTER_REQUEST_MESSAGE))
 #define REGISTER_RESPONSE_SIZE      (sizeof (long))
 #define FINAL_MESSAGE_SIZE          (sizeof (FINAL_MESSAGE))
-#define ACK_MESSAGE_SIZE            (sizeof (ACK_MESSAGE))
-
-#define FTOK_PATHNAME               (".")
-#define FTOK_ID                     ('$')
+#define ACK_MESSAGE_SIZE            (sizeof (long))
 
 #endif // PROTOCOL_H
